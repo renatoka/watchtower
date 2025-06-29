@@ -1,22 +1,22 @@
-import { monitoringEngine } from './monitoring';
+import { monitoringEngine } from './monitoring'
 
-let isInitialized = false;
+let isInitialized = false
 
 export async function initializeMonitoring() {
-  if (isInitialized) {
-    return;
-  }
+    if (isInitialized) {
+        return
+    }
 
-  try {
-    await monitoringEngine.startMonitoring();
-    isInitialized = true;
-    console.log('Monitoring engine initialized successfully');
-  } catch (error) {
-    console.error('Failed to initialize monitoring:', error);
-  }
+    try {
+        await monitoringEngine.startMonitoring()
+        isInitialized = true
+        console.log('Monitoring engine initialized successfully')
+    } catch (error) {
+        console.error('Failed to initialize monitoring:', error)
+    }
 }
 
 // Auto-initialize in development
 if (process.env.NODE_ENV === 'development') {
-  initializeMonitoring();
+    initializeMonitoring()
 }

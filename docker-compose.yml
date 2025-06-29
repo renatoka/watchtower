@@ -1,42 +1,42 @@
 version: '3.8'
 
 services:
-  postgres:
-    image: postgres:17.5-alpine3.22
-    container_name: api-guardian-db
-    restart: unless-stopped
-    environment:
-      POSTGRES_DB: api_guardian
-      POSTGRES_USER: api_guardian
-      POSTGRES_PASSWORD: password123
-      POSTGRES_INITDB_ARGS: "--encoding=UTF-8"
-    ports:
-      - "5432:5432"
-    volumes:
-      - postgres_data:/var/lib/postgresql/data
-      - ./init-db:/docker-entrypoint-initdb.d
-    networks:
-      - api-guardian-network
+    postgres:
+        image: postgres:17.5-alpine3.22
+        container_name: api-guardian-db
+        restart: unless-stopped
+        environment:
+            POSTGRES_DB: api_guardian
+            POSTGRES_USER: api_guardian
+            POSTGRES_PASSWORD: password123
+            POSTGRES_INITDB_ARGS: '--encoding=UTF-8'
+        ports:
+            - '5432:5432'
+        volumes:
+            - postgres_data:/var/lib/postgresql/data
+            - ./init-db:/docker-entrypoint-initdb.d
+        networks:
+            - api-guardian-network
 
-  pgadmin:
-    image: dpage/pgadmin4:latest
-    container_name: api-guardian-pgadmin
-    restart: unless-stopped
-    environment:
-      PGADMIN_DEFAULT_EMAIL: admin@apiguardian.com
-      PGADMIN_DEFAULT_PASSWORD: admin
-      PGADMIN_CONFIG_SERVER_MODE: 'False'
-    ports:
-      - "5050:80"
-    depends_on:
-      - postgres
-    networks:
-      - api-guardian-network
+    pgadmin:
+        image: dpage/pgadmin4:latest
+        container_name: api-guardian-pgadmin
+        restart: unless-stopped
+        environment:
+            PGADMIN_DEFAULT_EMAIL: admin@apiguardian.com
+            PGADMIN_DEFAULT_PASSWORD: admin
+            PGADMIN_CONFIG_SERVER_MODE: 'False'
+        ports:
+            - '5050:80'
+        depends_on:
+            - postgres
+        networks:
+            - api-guardian-network
 
 volumes:
-  postgres_data:
-    driver: local
+    postgres_data:
+        driver: local
 
 networks:
-  api-guardian-network:
-    driver: bridge
+    api-guardian-network:
+        driver: bridge
