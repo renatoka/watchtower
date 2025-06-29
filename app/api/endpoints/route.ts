@@ -7,7 +7,7 @@ export async function GET() {
     const timestamp = new Date()
 
     try {
-        const endpoints = await monitoringEngine.getEnabledEndpoints()
+        const endpoints = await monitoringEngine.getAllEndpoints()
 
         return NextResponse.json<ApiResponse<Endpoint[]>>({
             success: true,

@@ -274,6 +274,33 @@ class MonitoringEngine {
         )
     }
 
+    async getAllEndpoints(): Promise<Endpoint[]> {
+        const db = getDb()
+
+        try {
+            const result = await db.query(`
+        SELECT * FROM endpoints ORDER BY name
+      `)
+
+            return result.rows.map((row) => ({
+                id: row.id,
+                name: row.name,
+                url: row.url,
+                checkInterval: row.check_interval,
+                timeout: row.timeout,
+                expectedStatus: row.expected_status,
+                severity: row.severity,
+                enabled: row.enabled,
+                tags: row.tags || [],
+                createdAt: row.created_at,
+                updatedAt: row.updated_at,
+            }))
+        } catch (error) {
+            console.error('❌ Failed to get all endpoints:', error)
+            return []
+        }
+    }
+
     async getEnabledEndpoints(): Promise<Endpoint[]> {
         const db = getDb()
 

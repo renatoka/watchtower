@@ -3,13 +3,14 @@
 import Link from 'next/link'
 import Image from 'next/image'
 import { usePathname } from 'next/navigation'
-import { BarChart3 } from 'lucide-react'
+import { BarChart3, Settings } from 'lucide-react'
 
 export function Navigation() {
     const pathname = usePathname()
 
     const navigation = [
         { name: 'Real-Time Data', href: '/realtime', icon: BarChart3 },
+        { name: 'Manage Endpoints', href: '/endpoints', icon: Settings },
     ]
 
     return (
