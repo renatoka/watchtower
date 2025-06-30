@@ -45,7 +45,6 @@ export function StatusCard({ statistics, onClick }: StatusCardProps) {
       }`}
       onClick={onClick}
     >
-      {/* Header */}
       <div className="flex items-center justify-between mb-4">
         <h3 className="text-lg font-semibold text-gray-900">
           {statistics.endpointName}
@@ -53,7 +52,6 @@ export function StatusCard({ statistics, onClick }: StatusCardProps) {
         {getStatusIcon(statistics.currentStatus)}
       </div>
 
-      {/* Status Indicator */}
       <div className="flex items-center mb-3">
         <div
           className={`w-3 h-3 rounded-full ${getStatusColor(
@@ -77,7 +75,6 @@ export function StatusCard({ statistics, onClick }: StatusCardProps) {
         )}
       </div>
 
-      {/* Metrics */}
       <div className="grid grid-cols-2 gap-4 mb-4">
         <div>
           <div className="flex items-center text-gray-500 text-sm mb-1">
@@ -92,7 +89,7 @@ export function StatusCard({ statistics, onClick }: StatusCardProps) {
         <div>
           <div className="flex items-center text-gray-500 text-sm mb-1">
             <Clock className="w-4 h-4 mr-1" />
-            Avg Response
+            Average Response
           </div>
           <div className="text-2xl font-bold text-gray-900">
             {statistics.averageResponseTime.toFixed(0)}ms

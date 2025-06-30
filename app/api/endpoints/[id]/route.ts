@@ -1,7 +1,48 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { getDb } from '@/app/lib/database'
 import { monitoringEngine } from '@/app/lib/monitoring'
-import { ApiResponse } from '@/app/lib/types'
+import { ApiResponse, Endpoint } from '@/app/lib/types'
+
+export async function GET(
+  request: NextRequest,
+  { params }: { params: { id: string } }
+) {
+  const timestamp = new Date()
+  const endpointId = params.id
+
+  try {
+    const endpoint = await monitoringEngine.getEndpointById(endpointId)
+
+    if (!endpoint) {
+      return NextResponse.json<ApiResponse<null>>(
+        {
+          success: false,
+          error: 'Endpoint not found',
+          timestamp,
+        },
+        { status: 404 }
+      )
+    }
+
+    return NextResponse.json<ApiResponse<Endpoint>>({
+      success: true,
+      data: endpoint,
+      timestamp,
+    })
+  } catch (error) {
+    console.error(`Error fetching endpoint ${endpointId}:`, error)
+
+    return NextResponse.json<ApiResponse<null>>(
+      {
+        success: false,
+        error:
+          error instanceof Error ? error.message : 'Failed to fetch endpoint',
+        timestamp,
+      },
+      { status: 500 }
+    )
+  }
+}
 
 export async function PUT(
   request: NextRequest,
@@ -70,7 +111,7 @@ export async function PUT(
       )
     }
 
-    // Restart monitoring for this endpoint
+    // Restart monitoring for this endpoint to pick up changes
     await monitoringEngine.restartEndpointMonitoring(endpointId)
 
     return NextResponse.json<ApiResponse<null>>({

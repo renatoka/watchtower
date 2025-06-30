@@ -54,6 +54,18 @@ export class ApiClient {
     return response.data || []
   }
 
+  async getEndpoint(id: string): Promise<Endpoint | null> {
+    try {
+      const response = await this.fetchApi<Endpoint>(`/api/endpoints/${id}`)
+      return response.data || null
+    } catch (error) {
+      if (error instanceof Error && error.message.includes('404')) {
+        return null
+      }
+      throw error
+    }
+  }
+
   async createEndpoint(
     endpoint: Omit<Endpoint, 'id' | 'createdAt' | 'updatedAt'>
   ): Promise<{ id: string }> {

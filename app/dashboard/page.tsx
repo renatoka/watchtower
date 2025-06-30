@@ -1,4 +1,4 @@
-import { DashboardOverview } from '@/app/components/DashboardOverview'
+import { DashboardOverview } from '@/app/components/pages/DashboardOverview'
 
 export default function DashboardPage() {
   return (
