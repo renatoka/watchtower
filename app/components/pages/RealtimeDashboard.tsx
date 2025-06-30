@@ -3,10 +3,10 @@
 import { useState, useEffect } from 'react'
 import { UptimeStatistics } from '@/app/lib/types'
 import { useRealtimeUpdates } from '@/app/hooks/useRealtimeUpdates'
-import { StatusCard } from './StatusCard'
+import { StatusCard } from '../StatusCard'
 import { RefreshCw, Plus, Wifi, WifiOff } from 'lucide-react'
-import { ConnectionStatus } from './ConnectionStatus'
-import { SystemMessages } from './SystemMessages'
+import { ConnectionStatus } from '../ConnectionStatus'
+import { SystemMessages } from '../SystemMessages'
 
 export function RealtimeDashboard() {
   const {
@@ -74,7 +74,7 @@ export function RealtimeDashboard() {
         </div>
 
         <div className="flex items-center space-x-3">
-          <button
+          {/* <button
             onClick={reconnect}
             disabled={isConnected}
             className="flex items-center px-4 py-2 text-sm font-medium text-gray-700 bg-white border border-gray-300 rounded-md hover:bg-gray-50 disabled:opacity-50"
@@ -85,7 +85,7 @@ export function RealtimeDashboard() {
               <WifiOff className="w-4 h-4 mr-2" />
             )}
             {isConnected ? 'Connected' : 'Reconnect'}
-          </button>
+          </button> */}
         </div>
       </div>
 

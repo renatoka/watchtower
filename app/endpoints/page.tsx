@@ -1,4 +1,4 @@
-import { EndpointManagement } from '@/app/components/EndpointManagement'
+import { EndpointManagement } from '@/app/components/pages/EndpointManagement'
 
 export default function EndpointsPage() {
   return (

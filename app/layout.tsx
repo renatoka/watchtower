@@ -14,9 +14,8 @@ const geistMono = Geist_Mono({
 })
 
 export const metadata: Metadata = {
-  title: 'Watchtower',
-  description:
-    'Watchtower is a real-time monitoring dashboard for uptime checks and system status updates. Built with Next.js and WebSockets, it provides live insights, historical uptime statistics, and alert messaging—all in one minimalist interface.',
+  title: 'WatchTower - API Monitoring',
+  description: 'Modern API monitoring dashboard',
 }
 
 export default function RootLayout({
@@ -27,7 +26,7 @@ export default function RootLayout({
   return (
     <html lang="en">
       <body
-        className={`${geistSans.variable} ${geistMono.variable} antialiased`}
+        className={`${geistSans.variable} ${geistMono.variable} antialiased bg-gray-50`}
       >
         <Navigation />
         {children}

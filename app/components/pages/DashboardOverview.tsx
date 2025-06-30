@@ -3,7 +3,7 @@
 import { useState, useEffect } from 'react'
 import { UptimeStatistics } from '@/app/lib/types'
 import { apiClient } from '@/app/lib/api-client'
-import { StatusCard } from './StatusCard'
+import { StatusCard } from '../StatusCard'
 import { RefreshCw, Plus, AlertCircle } from 'lucide-react'
 
 export function DashboardOverview() {

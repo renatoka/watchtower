@@ -1,4 +1,4 @@
-import { RealtimeDashboard } from '../components/RealtimeDashboard'
+import { RealtimeDashboard } from "@/app/components/pages/RealtimeDashboard";
 
 export default function RealtimePage() {
   return (
