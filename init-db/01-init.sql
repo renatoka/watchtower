@@ -32,8 +32,8 @@ CREATE INDEX IF NOT EXISTS idx_endpoints_enabled ON endpoints(enabled);
 INSERT INTO endpoints (name, url, check_interval, timeout, expected_status, severity, tags)
 VALUES
     ('Payment API', 'https://httpbin.org/status/200', 30, 5, 200, 'critical', ARRAY['payment', 'core']),
-    ('User API', 'https://httpbin.org/status/200', 45, 5, 200, 'high', ARRAY['user', 'core']),
-    ('Inventory API (Failing)', 'https://httpbin.org/status/500', 60, 5, 200, 'medium', ARRAY['inventory', 'business']),
-    ('Analytics API (Slow)', 'https://httpbin.org/delay/2', 90, 8, 200, 'low', ARRAY['analytics', 'reporting']),
-    ('Health Check', 'https://httpbin.org/status/200', 15, 3, 200, 'high', ARRAY['health', 'monitoring'])
+    ('User API', 'https://httpbin.org/status/200', 30, 5, 200, 'high', ARRAY['user', 'core']),
+    ('Inventory API (Failing)', 'https://httpbin.org/status/500', 30, 5, 200, 'medium', ARRAY['inventory', 'business']),
+    ('Analytics API (Slow)', 'https://httpbin.org/delay/2', 30, 8, 200, 'low', ARRAY['analytics', 'reporting']),
+    ('Health Check', 'https://httpbin.org/status/200', 30, 3, 200, 'high', ARRAY['health', 'monitoring'])
 ON CONFLICT (name) DO NOTHING;

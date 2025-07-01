@@ -3,6 +3,12 @@ import { ApiResponse, UptimeStatistics, Endpoint } from './types'
 const API_BASE = process.env.NEXT_PUBLIC_APP_URL || ''
 
 export class ApiClient {
+  private getAuthHeader(): HeadersInit {
+    const token =
+      typeof window !== 'undefined' ? localStorage.getItem('auth_token') : null
+    return token ? { Authorization: `Bearer ${token}` } : {}
+  }
+
   private async fetchApi<T>(
     endpoint: string,
     options?: RequestInit
@@ -11,6 +17,7 @@ export class ApiClient {
       const response = await fetch(`${API_BASE}${endpoint}`, {
         headers: {
           'Content-Type': 'application/json',
+          ...this.getAuthHeader(),
           ...options?.headers,
         },
         ...options,
@@ -19,6 +26,12 @@ export class ApiClient {
       const data = await response.json()
 
       if (!response.ok) {
+        if (response.status === 401 && typeof window !== 'undefined') {
+          localStorage.removeItem('auth_token')
+          localStorage.removeItem('user')
+          window.location.href = '/login'
+        }
+
         throw new Error(data.error || `HTTP ${response.status}`)
       }
 

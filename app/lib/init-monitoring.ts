@@ -16,7 +16,6 @@ export async function initializeMonitoring() {
   }
 }
 
-// Auto-initialize in development
 if (process.env.NODE_ENV === 'development') {
   initializeMonitoring()
 }

@@ -3,12 +3,29 @@ import { getDb } from '@/app/lib/database'
 import { monitoringEngine } from '@/app/lib/monitoring'
 import { ApiResponse, Endpoint } from '@/app/lib/types'
 
+function isValidUUID(uuid: string): boolean {
+  const uuidRegex =
+    /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i
+  return uuidRegex.test(uuid)
+}
+
 export async function GET(
   request: NextRequest,
-  { params }: { params: { id: string } }
+  { params }: { params: Promise<{ id: string }> }
 ) {
   const timestamp = new Date()
-  const endpointId = params.id
+  const { id: endpointId } = await params
+
+  if (!isValidUUID(endpointId)) {
+    return NextResponse.json<ApiResponse<null>>(
+      {
+        success: false,
+        error: 'Invalid endpoint ID format',
+        timestamp,
+      },
+      { status: 400 }
+    )
+  }
 
   try {
     const endpoint = await monitoringEngine.getEndpointById(endpointId)
@@ -46,10 +63,21 @@ export async function GET(
 
 export async function PUT(
   request: NextRequest,
-  { params }: { params: { id: string } }
+  { params }: { params: Promise<{ id: string }> }
 ) {
   const timestamp = new Date()
-  const endpointId = params.id
+  const { id: endpointId } = await params
+
+  if (!isValidUUID(endpointId)) {
+    return NextResponse.json<ApiResponse<null>>(
+      {
+        success: false,
+        error: 'Invalid endpoint ID format',
+        timestamp,
+      },
+      { status: 400 }
+    )
+  }
 
   try {
     const body = await request.json()
@@ -75,9 +103,39 @@ export async function PUT(
       )
     }
 
+    try {
+      new URL(url)
+    } catch {
+      return NextResponse.json<ApiResponse<null>>(
+        {
+          success: false,
+          error: 'Invalid URL format',
+          timestamp,
+        },
+        { status: 400 }
+      )
+    }
+
+    const validatedCheckInterval = Math.max(5, parseInt(checkInterval) || 30)
+    const validatedTimeout = Math.max(1, parseInt(timeout) || 5)
+    const validatedExpectedStatus = Math.min(
+      599,
+      Math.max(100, parseInt(expectedStatus) || 200)
+    )
+
+    const validSeverities = ['critical', 'high', 'medium', 'low']
+    const validatedSeverity = validSeverities.includes(severity)
+      ? severity
+      : 'medium'
+
+    const validatedTags = Array.isArray(tags)
+      ? tags.filter(
+          (tag) => typeof tag === 'string' && tag.length > 0 && tag.length < 50
+        )
+      : []
+
     const db = getDb()
 
-    // Update endpoint
     const result = await db.query(
       `
       UPDATE endpoints
@@ -88,14 +146,14 @@ export async function PUT(
       RETURNING *
     `,
       [
-        name,
-        url,
-        checkInterval || 30,
-        timeout || 5,
-        expectedStatus || 200,
-        severity || 'medium',
+        name.trim(),
+        url.trim(),
+        validatedCheckInterval,
+        validatedTimeout,
+        validatedExpectedStatus,
+        validatedSeverity,
         enabled !== undefined ? enabled : true,
-        tags || [],
+        validatedTags,
         endpointId,
       ]
     )
@@ -111,7 +169,6 @@ export async function PUT(
       )
     }
 
-    // Restart monitoring for this endpoint to pick up changes
     await monitoringEngine.restartEndpointMonitoring(endpointId)
 
     return NextResponse.json<ApiResponse<null>>({
@@ -135,15 +192,25 @@ export async function PUT(
 
 export async function DELETE(
   request: NextRequest,
-  { params }: { params: { id: string } }
+  { params }: { params: Promise<{ id: string }> }
 ) {
   const timestamp = new Date()
-  const endpointId = params.id
+  const { id: endpointId } = await params
+
+  if (!isValidUUID(endpointId)) {
+    return NextResponse.json<ApiResponse<null>>(
+      {
+        success: false,
+        error: 'Invalid endpoint ID format',
+        timestamp,
+      },
+      { status: 400 }
+    )
+  }
 
   try {
     const db = getDb()
 
-    // Delete endpoint (CASCADE will handle uptime_checks)
     const result = await db.query(
       'DELETE FROM endpoints WHERE id = $1 RETURNING *',
       [endpointId]
@@ -160,7 +227,6 @@ export async function DELETE(
       )
     }
 
-    // Stop monitoring for this endpoint
     await monitoringEngine.restartEndpointMonitoring(endpointId)
 
     return NextResponse.json<ApiResponse<null>>({

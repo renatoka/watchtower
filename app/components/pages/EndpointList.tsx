@@ -67,7 +67,6 @@ function DeleteConfirmationModal({
   )
 }
 
-// Main Endpoint List Component
 export function EndpointList() {
   const router = useRouter()
   const [endpoints, setEndpoints] = useState<Endpoint[]>([])

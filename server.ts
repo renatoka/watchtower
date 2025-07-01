@@ -2,6 +2,7 @@ import { createServer } from 'http'
 import { parse } from 'url'
 import next from 'next'
 import { initializeWebSocketServer } from './app/lib/websocket-server'
+import { scheduler } from './app/lib/scheduler'
 
 const dev = process.env.NODE_ENV !== 'production'
 const hostname = 'localhost'
@@ -26,7 +27,6 @@ app.prepare().then(() => {
     }
   })
 
-  // Initialize WebSocket server
   console.log('🔌 Initializing WebSocket server...')
   initializeWebSocketServer(server)
 
@@ -38,6 +38,8 @@ app.prepare().then(() => {
     .listen(port, () => {
       console.log(`🚀 Server ready on http://${hostname}:${port}`)
       console.log(`📡 WebSocket server ready on ws://${hostname}:${port}`)
+
+      scheduler.start()
 
       if (dev) {
         console.log('🔄 Auto-initializing monitoring engine...')
@@ -52,4 +54,13 @@ app.prepare().then(() => {
         }, 3000) // Wait 3 seconds for database to be ready
       }
     })
+
+  process.on('SIGTERM', () => {
+    console.log('SIGTERM received, shutting down gracefully...')
+    scheduler.stop()
+    server.close(() => {
+      console.log('Server closed')
+      process.exit(0)
+    })
+  })
 })

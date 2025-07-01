@@ -5,6 +5,7 @@ import {
   broadcastUptimeUpdate,
   broadcastSystemStatus,
 } from './websocket-server'
+import { circuitBreakerFactory } from './circuit-breaker'
 
 class MonitoringEngine {
   private intervals: Map<string, NodeJS.Timeout> = new Map()
@@ -14,8 +15,17 @@ class MonitoringEngine {
   async startMonitoring() {
     console.log('🚀 Starting monitoring engine...')
 
-    // Get all enabled endpoints
+    this.stopMonitoring()
+
     const endpoints = await this.getEnabledEndpoints()
+    console.log(
+      `📊 Found ${endpoints.length} enabled endpoints:`,
+      endpoints.map((e) => ({
+        name: e.name,
+        id: e.id,
+        interval: e.checkInterval,
+      }))
+    )
 
     if (endpoints.length === 0) {
       console.warn('⚠️ No enabled endpoints found')
@@ -23,7 +33,6 @@ class MonitoringEngine {
       return
     }
 
-    // Start monitoring each endpoint
     for (const endpoint of endpoints) {
       this.startEndpointMonitoring(endpoint)
     }
@@ -38,8 +47,8 @@ class MonitoringEngine {
   async stopMonitoring() {
     console.log('🛑 Stopping monitoring engine...')
 
-    // Clear all intervals
     for (const [endpointId, interval] of this.intervals) {
+      console.log(`⏹️ Stopping monitor for endpoint ${endpointId}`)
       clearInterval(interval)
     }
 
@@ -54,28 +63,34 @@ class MonitoringEngine {
   async restartEndpointMonitoring(endpointId: string) {
     console.log(`🔄 Restarting monitoring for endpoint: ${endpointId}`)
 
-    // Stop existing monitoring
     const interval = this.intervals.get(endpointId)
     if (interval) {
       clearInterval(interval)
       this.intervals.delete(endpointId)
+      console.log(`⏹️ Stopped existing monitor for endpoint: ${endpointId}`)
     }
 
-    // Get updated endpoint data
     const endpoint = await this.getEndpointById(endpointId)
     if (endpoint && endpoint.enabled) {
       this.startEndpointMonitoring(endpoint)
       broadcastSystemStatus(`Restarted monitoring for ${endpoint.name}`, 'info')
+    } else if (endpoint && !endpoint.enabled) {
+      console.log(`⏭️ Endpoint ${endpointId} is disabled, not starting monitor`)
+    } else {
+      console.log(`❌ Endpoint ${endpointId} not found`)
     }
   }
 
   private startEndpointMonitoring(endpoint: Endpoint) {
+    if (this.intervals.has(endpoint.id)) {
+      console.log(`⚠️ Already monitoring ${endpoint.name}, skipping duplicate`)
+      return
+    }
+
     const intervalMs = endpoint.checkInterval * 1000
 
-    // Perform initial check immediately
     this.checkEndpoint(endpoint)
 
-    // Set up recurring checks
     const interval = setInterval(() => {
       this.checkEndpoint(endpoint)
     }, intervalMs)
@@ -83,71 +98,114 @@ class MonitoringEngine {
     this.intervals.set(endpoint.id, interval)
 
     console.log(
-      `📡 Started monitoring ${endpoint.name} (every ${endpoint.checkInterval}s)`
+      `📡 Started monitoring ${endpoint.name} (ID: ${endpoint.id}) every ${endpoint.checkInterval}s`
     )
   }
 
   private async checkEndpoint(endpoint: Endpoint) {
     const startTime = Date.now()
+    const circuitBreaker = circuitBreakerFactory.get(
+      `endpoint-${endpoint.id}`,
+      {
+        failureThreshold: 70, // Open at 70% failure rate
+        resetTimeout: endpoint.checkInterval * 3000, // 3x check interval
+        monitoringPeriod: 300000, // 5 minutes
+        minimumRequests: 3,
+        onStateChange: (state) => {
+          console.log(`🔌 Circuit breaker for ${endpoint.name}: ${state}`)
+          if (state === 'OPEN') {
+            broadcastSystemStatus(
+              `Circuit breaker opened for ${endpoint.name} due to repeated failures`,
+              'warning'
+            )
+          }
+        },
+      }
+    )
 
     try {
-      console.log(`🔍 Checking ${endpoint.name}...`)
+      await circuitBreaker.execute(async () => {
+        console.log(`🔍 Checking ${endpoint.name}...`)
 
-      const response = await fetch(endpoint.url, {
-        method: 'GET',
-        signal: AbortSignal.timeout(endpoint.timeout * 1000),
-        headers: {
-          'User-Agent': 'Watchtower-Monitor/1.0',
-        },
+        const response = await fetch(endpoint.url, {
+          method: 'GET',
+          signal: AbortSignal.timeout(endpoint.timeout * 1000),
+          headers: {
+            'User-Agent': 'Watchtower-Monitor/1.0',
+          },
+        })
+
+        const responseTime = Date.now() - startTime
+        const isUp = response.status === endpoint.expectedStatus
+
+        if (!isUp) {
+          throw new Error(
+            `Got ${response.status}, expected ${endpoint.expectedStatus}`
+          )
+        }
+
+        const check: Omit<UptimeCheck, 'id'> = {
+          endpointId: endpoint.id,
+          endpointName: endpoint.name,
+          status: 'UP',
+          statusCode: response.status,
+          responseTime,
+          timestamp: new Date(),
+          errorReason: undefined,
+        }
+
+        await this.storeCheck(check)
+        this.handleConsecutiveFailures(endpoint.id, check)
+        this.logCheck(endpoint.name, check)
+
+        console.log(`📡 Broadcasting new check for ${endpoint.name}`)
+        broadcastNewCheck({
+          ...check,
+          id: `${endpoint.id}-${Date.now()}`,
+        } as UptimeCheck)
+
+        const stats = await this.getUptimeStatistics(endpoint.id)
+        if (stats) {
+          console.log(`📊 Broadcasting uptime statistics for ${endpoint.name}`)
+          broadcastUptimeUpdate(stats)
+          this.lastStatistics.set(endpoint.id, stats)
+        }
       })
-
-      const responseTime = Date.now() - startTime
-      const isUp = response.status === endpoint.expectedStatus
-
-      const check: Omit<UptimeCheck, 'id'> = {
-        endpointId: endpoint.id,
-        endpointName: endpoint.name,
-        status: isUp ? 'UP' : 'DOWN',
-        statusCode: response.status,
-        responseTime,
-        timestamp: new Date(),
-        errorReason: isUp
-          ? undefined
-          : `Got ${response.status}, expected ${endpoint.expectedStatus}`,
-      }
-
-      // Store check in database
-      await this.storeCheck(check)
-
-      // Handle consecutive failures tracking
-      this.handleConsecutiveFailures(endpoint.id, check)
-
-      // Log check result
-      this.logCheck(endpoint.name, check)
-
-      // 🚀 BROADCAST NEW CHECK VIA WEBSOCKET
-      console.log(`📡 Broadcasting new check for ${endpoint.name}`)
-      broadcastNewCheck({
-        ...check,
-        id: `${endpoint.id}-${Date.now()}`, // Generate temporary ID for broadcast
-      } as UptimeCheck)
-
-      // 🚀 BROADCAST UPDATED STATISTICS VIA WEBSOCKET
-      const stats = await this.getUptimeStatistics(endpoint.id)
-      if (stats) {
-        console.log(`📊 Broadcasting uptime statistics for ${endpoint.name}`)
-        broadcastUptimeUpdate(stats)
-
-        // Cache the statistics for comparison
-        this.lastStatistics.set(endpoint.id, stats)
-      }
     } catch (error) {
       const responseTime = Date.now() - startTime
       let errorReason = 'Unknown error'
+      let statusCode = 0
+
+      if (
+        error instanceof Error &&
+        error.message.includes('Circuit breaker is OPEN')
+      ) {
+        errorReason = 'Circuit breaker open - too many failures'
+        console.log(
+          `⚡ Skipping check for ${endpoint.name} - circuit breaker is open`
+        )
+
+        const check: Omit<UptimeCheck, 'id'> = {
+          endpointId: endpoint.id,
+          endpointName: endpoint.name,
+          status: 'DOWN',
+          statusCode: 0,
+          responseTime: 0,
+          timestamp: new Date(),
+          errorReason: 'Circuit breaker open',
+        }
+
+        await this.storeCheck(check)
+        return // Skip further processing
+      }
 
       if (error instanceof Error) {
         if (error.name === 'AbortError') {
           errorReason = `Timeout after ${endpoint.timeout}s`
+        } else if (error.message.includes('Got')) {
+          const match = error.message.match(/Got (\d+)/)
+          statusCode = match ? parseInt(match[1]) : 0
+          errorReason = error.message
         } else {
           errorReason = `Connection failed: ${error.message}`
         }
@@ -157,37 +215,24 @@ class MonitoringEngine {
         endpointId: endpoint.id,
         endpointName: endpoint.name,
         status: 'DOWN',
-        statusCode: 0,
+        statusCode,
         responseTime,
         timestamp: new Date(),
         errorReason,
       }
 
-      // Store check in database
       await this.storeCheck(check)
-
-      // Handle consecutive failures
       this.handleConsecutiveFailures(endpoint.id, check)
-
-      // Log check result
       this.logCheck(endpoint.name, check)
 
-      // 🚀 BROADCAST NEW CHECK VIA WEBSOCKET (ERROR CASE)
-      console.log(`📡 Broadcasting failed check for ${endpoint.name}`)
       broadcastNewCheck({
         ...check,
-        id: `${endpoint.id}-${Date.now()}`, // Generate temporary ID for broadcast
+        id: `${endpoint.id}-${Date.now()}`,
       } as UptimeCheck)
 
-      // 🚀 BROADCAST UPDATED STATISTICS VIA WEBSOCKET (ERROR CASE)
       const stats = await this.getUptimeStatistics(endpoint.id)
       if (stats) {
-        console.log(
-          `📊 Broadcasting uptime statistics for ${endpoint.name} (after failure)`
-        )
         broadcastUptimeUpdate(stats)
-
-        // Cache the statistics
         this.lastStatistics.set(endpoint.id, stats)
       }
     }
@@ -227,7 +272,6 @@ class MonitoringEngine {
       const previousFailures = this.consecutiveFailures.get(endpointId) || 0
       this.consecutiveFailures.set(endpointId, 0)
 
-      // If we recovered from failures, broadcast good news
       if (previousFailures > 0) {
         broadcastSystemStatus(
           `${check.endpointName} is back online after ${previousFailures} failures`,
@@ -239,7 +283,6 @@ class MonitoringEngine {
       const newCount = current + 1
       this.consecutiveFailures.set(endpointId, newCount)
 
-      // Broadcast alerts for multiple consecutive failures
       if (newCount % 3 === 0) {
         const alertMessage = `🚨 ${check.endpointName} has ${newCount} consecutive failures`
         console.warn(alertMessage)
@@ -360,13 +403,103 @@ class MonitoringEngine {
     return statistics
   }
 
+  // async getAllUptimeStatuses(): Promise<UptimeStatistics[]> {
+  //   const db = getDb()
+
+  //   try {
+  //     const since = new Date(Date.now() - 24 * 60 * 60 * 1000)
+
+  //     const result = await db.query(
+  //       `
+  //     WITH endpoint_stats AS (
+  //       SELECT
+  //         e.id as endpoint_id,
+  //         e.name as endpoint_name,
+  //         COUNT(uc.id) as total_checks,
+  //         COUNT(uc.id) FILTER (WHERE uc.status = 'UP') as successful_checks,
+  //         COUNT(uc.id) FILTER (WHERE uc.status = 'DOWN') as failed_checks,
+  //         COALESCE(AVG(uc.response_time), 0) as avg_response_time,
+  //         MAX(uc.timestamp) as last_check
+  //       FROM endpoints e
+  //       LEFT JOIN uptime_checks uc ON e.id = uc.endpoint_id
+  //         AND uc.timestamp >= $1
+  //       WHERE e.enabled = true
+  //       GROUP BY e.id, e.name
+  //     ),
+  //     latest_status AS (
+  //       SELECT DISTINCT ON (endpoint_id)
+  //         endpoint_id,
+  //         status as current_status
+  //       FROM uptime_checks
+  //       WHERE timestamp >= $1
+  //       ORDER BY endpoint_id, timestamp DESC
+  //     ),
+  //     recent_checks AS (
+  //       SELECT
+  //         uc.*,
+  //         ROW_NUMBER() OVER (PARTITION BY uc.endpoint_id ORDER BY uc.timestamp DESC) as rn
+  //       FROM uptime_checks uc
+  //       WHERE uc.timestamp >= $1
+  //     )
+  //     SELECT
+  //       es.*,
+  //       COALESCE(ls.current_status, 'UP') as current_status,
+  //       COALESCE(
+  //         ROUND((es.successful_checks::numeric / NULLIF(es.total_checks, 0)) * 100, 2),
+  //         100
+  //       ) as uptime_percentage,
+  //       COALESCE(
+  //         json_agg(
+  //           json_build_object(
+  //             'id', rc.id,
+  //             'endpointId', rc.endpoint_id,
+  //             'endpointName', rc.endpoint_name,
+  //             'status', rc.status,
+  //             'statusCode', rc.status_code,
+  //             'responseTime', rc.response_time,
+  //             'timestamp', rc.timestamp,
+  //             'errorReason', rc.error_reason
+  //           ) ORDER BY rc.timestamp DESC
+  //         ) FILTER (WHERE rc.rn <= 10),
+  //         '[]'::json
+  //       ) as recent_checks
+  //     FROM endpoint_stats es
+  //     LEFT JOIN latest_status ls ON es.endpoint_id = ls.endpoint_id
+  //     LEFT JOIN recent_checks rc ON es.endpoint_id = rc.endpoint_id AND rc.rn <= 10
+  //     GROUP BY
+  //       es.endpoint_id, es.endpoint_name, es.total_checks,
+  //       es.successful_checks, es.failed_checks,
+  //       es.avg_response_time, es.last_check, ls.current_status
+  //     ORDER BY es.endpoint_name
+  //   `,
+  //       [since]
+  //     )
+
+  //     return result.rows.map((row) => ({
+  //       endpointId: row.endpoint_id,
+  //       endpointName: row.endpoint_name,
+  //       totalChecks: parseInt(row.total_checks) || 0,
+  //       successfulChecks: parseInt(row.successful_checks) || 0,
+  //       failedChecks: parseInt(row.failed_checks) || 0,
+  //       uptimePercentage: parseFloat(row.uptime_percentage) || 100,
+  //       averageResponseTime: parseFloat(row.avg_response_time) || 0,
+  //       lastCheck: row.last_check || new Date(),
+  //       currentStatus: row.current_status || 'UP',
+  //       consecutiveFailures: this.consecutiveFailures.get(row.endpoint_id) || 0,
+  //       recentChecks: row.recent_checks || [],
+  //     }))
+  //   } catch (error) {
+  //     console.error('❌ Failed to get all uptime statuses:', error)
+  //     return []
+  //   }
+  // }
+
   async getUptimeStatistics(
     endpointId: string
   ): Promise<UptimeStatistics | null> {
     const db = getDb()
 
     try {
-      // Get endpoint info
       const endpointResult = await db.query(
         `SELECT name, url FROM endpoints WHERE id = $1`,
         [endpointId]
@@ -378,7 +511,6 @@ class MonitoringEngine {
 
       const { name: endpointName, url } = endpointResult.rows[0]
 
-      // Get statistics for last 24 hours
       const since = new Date(Date.now() - 24 * 60 * 60 * 1000)
 
       const statsResult = await db.query(
@@ -405,7 +537,6 @@ class MonitoringEngine {
         [endpointId]
       )
 
-      // Get recent checks
       const recentChecks: UptimeCheck[] = recentResult.rows.map((row) => ({
         id: row.id,
         endpointId: row.endpoint_id,
@@ -423,13 +554,11 @@ class MonitoringEngine {
       const uptimePercentage =
         totalChecks > 0 ? (successfulChecks / totalChecks) * 100 : 0
 
-      // Get current status from most recent check
       let currentStatus: 'UP' | 'DOWN' = 'UP'
       if (recentResult.rows.length > 0) {
         currentStatus = recentResult.rows[0].status
       }
 
-      // Get consecutive failures
       const consecutiveFailures = this.consecutiveFailures.get(endpointId) || 0
 
       return {
@@ -452,7 +581,6 @@ class MonitoringEngine {
     }
   }
 
-  // 🚀 NEW: Force broadcast all current statistics
   async broadcastAllStatistics() {
     console.log('📡 Broadcasting all current statistics...')
     const statistics = await this.getAllUptimeStatuses()
@@ -467,12 +595,10 @@ class MonitoringEngine {
 
 export const monitoringEngine = new MonitoringEngine()
 
-// Auto-start monitoring in production
 if (process.env.NODE_ENV === 'production') {
   monitoringEngine.startMonitoring().catch(console.error)
 }
 
-// Auto-start monitoring in development (server-side only)
 if (typeof window === 'undefined') {
   setTimeout(() => {
     monitoringEngine.startMonitoring().catch(console.error)

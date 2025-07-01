@@ -7,8 +7,10 @@ import { StatusCard } from '../StatusCard'
 import { RefreshCw, Plus, Wifi, WifiOff } from 'lucide-react'
 import { ConnectionStatus } from '../ConnectionStatus'
 import { SystemMessages } from '../SystemMessages'
+import { useRouter } from 'next/navigation'
 
 export function RealtimeDashboard() {
+  const router = useRouter()
   const {
     isConnected,
     connectionError,
@@ -72,21 +74,6 @@ export function RealtimeDashboard() {
             {renderLastUpdate()}
           </div>
         </div>
-
-        <div className="flex items-center space-x-3">
-          {/* <button
-            onClick={reconnect}
-            disabled={isConnected}
-            className="flex items-center px-4 py-2 text-sm font-medium text-gray-700 bg-white border border-gray-300 rounded-md hover:bg-gray-50 disabled:opacity-50"
-          >
-            {isConnected ? (
-              <Wifi className="w-4 h-4 mr-2" />
-            ) : (
-              <WifiOff className="w-4 h-4 mr-2" />
-            )}
-            {isConnected ? 'Connected' : 'Reconnect'}
-          </button> */}
-        </div>
       </div>
 
       <SystemMessages messages={systemMessages} onClear={clearMessages} />
@@ -139,9 +126,18 @@ export function RealtimeDashboard() {
       ) : (
         <div className="text-center py-12">
           <div className="text-gray-500">
-            {isConnected
-              ? 'Waiting for monitoring data...'
-              : 'Connecting to monitoring service...'}
+            <RefreshCw className="inline-block w-6 h-6 mb-2" />
+            <p className="text-lg font-semibold">No endpoints monitored yet</p>
+            <p className="text-sm">Add your first endpoint to get started.</p>
+            <button
+              onClick={() => {
+                router.push('/endpoints/new')
+              }}
+              className="mt-4 inline-flex items-center px-4 py-2 text-sm font-medium text-white bg-blue-600 border border-transparent rounded-md hover:bg-blue-700 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-blue-500"
+            >
+              <Plus className="w-4 h-4 mr-2" />
+              Add Endpoint
+            </button>
           </div>
         </div>
       )}

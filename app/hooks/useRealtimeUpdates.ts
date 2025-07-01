@@ -1,7 +1,7 @@
 'use client'
 
 import { useEffect, useState, useCallback, useRef } from 'react'
-import io from 'socket.io-client'
+import io, { Socket } from 'socket.io-client'
 import type { UptimeStatistics, UptimeCheck } from '@/app/lib/types'
 import type {
   ServerToClientEvents,
@@ -9,6 +9,7 @@ import type {
 } from '@/app/lib/websocket-server'
 
 interface SystemMessage {
+  id: string // Add ID for proper React keys
   message: string
   type: 'info' | 'warning' | 'error'
   timestamp: Date
@@ -17,10 +18,25 @@ interface SystemMessage {
 interface UseRealtimeUpdatesOptions {
   autoConnect?: boolean
   endpointId?: string
+  maxReconnectAttempts?: number
+  maxMessages?: number
+  maxRecentChecks?: number
 }
 
+const DEFAULT_MAX_MESSAGES = 50
+const DEFAULT_MAX_RECENT_CHECKS = 100
+const DEFAULT_MAX_RECONNECT_ATTEMPTS = 5
+const RECONNECT_INTERVAL_BASE = 1000 // 1 second
+const RECONNECT_INTERVAL_MAX = 30000 // 30 seconds
+
 export function useRealtimeUpdates(options: UseRealtimeUpdatesOptions = {}) {
-  const { autoConnect = true, endpointId } = options
+  const {
+    autoConnect = true,
+    endpointId,
+    maxReconnectAttempts = DEFAULT_MAX_RECONNECT_ATTEMPTS,
+    maxMessages = DEFAULT_MAX_MESSAGES,
+    maxRecentChecks = DEFAULT_MAX_RECENT_CHECKS,
+  } = options
 
   const [isConnected, setIsConnected] = useState(false)
   const [connectionError, setConnectionError] = useState<string | null>(null)
@@ -29,95 +45,105 @@ export function useRealtimeUpdates(options: UseRealtimeUpdatesOptions = {}) {
   const [systemMessages, setSystemMessages] = useState<SystemMessage[]>([])
 
   const reconnectAttempts = useRef(0)
-  const maxReconnectAttempts = 5
   const socketRef = useRef<ReturnType<typeof io> | null>(null)
+  const reconnectTimeoutRef = useRef<NodeJS.Timeout | null>(null)
+  const messageIdCounter = useRef(0)
+  const isMountedRef = useRef(true)
 
-  // Get WebSocket URL - Updated logic for integrated server
+  useEffect(() => {
+    isMountedRef.current = true
+    return () => {
+      isMountedRef.current = false
+    }
+  }, [])
+
   const getWebSocketUrl = () => {
     const wsUrl = process.env.NEXT_PUBLIC_WS_URL
     if (wsUrl) {
-      console.log('🌐 Using configured WebSocket URL:', wsUrl)
       return wsUrl
     }
 
-    // For integrated server, use the same port as the main app
     const protocol = window.location.protocol === 'https:' ? 'https:' : 'http:'
     const hostname = window.location.hostname
-    const port = window.location.port || '3000' // Use same port as main app
-    const fallbackUrl = `${protocol}//${hostname}:${port}`
-
-    console.log(
-      '⚠️ NEXT_PUBLIC_WS_URL not set, using same port as app:',
-      fallbackUrl
-    )
-    return fallbackUrl
+    const port = window.location.port || '3000'
+    return `${protocol}//${hostname}:${port}`
   }
 
+  const cleanup = useCallback(() => {
+    if (reconnectTimeoutRef.current) {
+      clearTimeout(reconnectTimeoutRef.current)
+      reconnectTimeoutRef.current = null
+    }
+
+    if (socketRef.current) {
+      socketRef.current.removeAllListeners()
+      socketRef.current.disconnect()
+      socketRef.current = null
+    }
+
+    if (!isMountedRef.current) {
+      setIsConnected(false)
+      setConnectionError(null)
+      setStatistics([])
+      setRecentChecks([])
+      setSystemMessages([])
+    }
+  }, [])
+
   const connect = useCallback(() => {
-    if (socketRef.current?.connected) {
-      console.log('🔌 Already connected, skipping...')
+    if (socketRef.current?.connected || !isMountedRef.current) {
       return
     }
 
     const wsUrl = getWebSocketUrl()
     console.log('🔌 Connecting to WebSocket:', wsUrl)
 
-    const newSocket = io(wsUrl, {
+    const socket = io(wsUrl, {
       transports: ['websocket', 'polling'],
       timeout: 20000,
-      forceNew: true, // Force new connection
+      reconnection: false, // Handle reconnection manually
     })
 
-    // Connection successful
-    newSocket.on('connect', () => {
+    socket.on('connect', () => {
+      if (!isMountedRef.current) return
+
       console.log('✅ WebSocket connected successfully')
       setIsConnected(true)
       setConnectionError(null)
       reconnectAttempts.current = 0
 
-      // Subscribe to updates
       if (endpointId) {
-        console.log('📡 Subscribing to endpoint:', endpointId)
-        newSocket.emit('subscribe', endpointId)
+        socket.emit('subscribe', endpointId)
       } else {
-        console.log('📡 Subscribing to global updates')
-        newSocket.emit('subscribe')
+        socket.emit('subscribe')
       }
 
-      // Request initial data
       console.log('🔄 Requesting full update...')
-      newSocket.emit('requestFullUpdate')
+      socket.emit('requestFullUpdate')
     })
 
-    // Connection failed
-    newSocket.on('connect_error', (error: any) => {
-      console.error('❌ WebSocket connection error:', error)
+    socket.on('connect_error', (error: Error) => {
+      if (!isMountedRef.current) return
+
+      console.error('❌ WebSocket connection error:', error.message)
       setConnectionError(`Connection failed: ${error.message}`)
       setIsConnected(false)
-    })
 
-    // Disconnection handling
-    newSocket.on('disconnect', (reason: any) => {
-      console.log('🔌 WebSocket disconnected:', reason)
-      setIsConnected(false)
-
-      // Don't auto-reconnect if manually disconnected
-      if (reason === 'io client disconnect') return
-
-      // Auto-reconnect with exponential backoff
       if (reconnectAttempts.current < maxReconnectAttempts) {
         reconnectAttempts.current++
         const delay = Math.min(
-          1000 * Math.pow(2, reconnectAttempts.current),
-          30000
+          RECONNECT_INTERVAL_BASE * Math.pow(2, reconnectAttempts.current - 1),
+          RECONNECT_INTERVAL_MAX
         )
+
         console.log(
           `🔄 Reconnecting in ${delay}ms (attempt ${reconnectAttempts.current})`
         )
 
-        setTimeout(() => {
-          if (socketRef.current) {
-            newSocket.connect()
+        reconnectTimeoutRef.current = setTimeout(() => {
+          if (isMountedRef.current) {
+            cleanup()
+            connect()
           }
         }, delay)
       } else {
@@ -125,9 +151,27 @@ export function useRealtimeUpdates(options: UseRealtimeUpdatesOptions = {}) {
       }
     })
 
-    // Data event handlers
-    newSocket.on('uptimeUpdate', (data: UptimeStatistics) => {
-      console.log('📊 Received uptime update:', data)
+    socket.on('disconnect', (reason: string) => {
+      if (!isMountedRef.current) return
+
+      console.log('🔌 WebSocket disconnected:', reason)
+      setIsConnected(false)
+
+      if (reason === 'io client disconnect') return
+
+      if (reconnectAttempts.current < maxReconnectAttempts) {
+        const delay = RECONNECT_INTERVAL_BASE
+        reconnectTimeoutRef.current = setTimeout(() => {
+          if (isMountedRef.current) {
+            connect()
+          }
+        }, delay)
+      }
+    })
+
+    socket.on('uptimeUpdate', (data: UptimeStatistics) => {
+      if (!isMountedRef.current) return
+
       setStatistics((prev) => {
         const index = prev.findIndex((s) => s.endpointId === data.endpointId)
         if (index >= 0) {
@@ -135,73 +179,92 @@ export function useRealtimeUpdates(options: UseRealtimeUpdatesOptions = {}) {
           updated[index] = data
           return updated
         } else {
-          return [...prev, data]
+          const newStats = [...prev, data]
+          return newStats.slice(-100) // Keep last 100 endpoints
         }
       })
     })
 
-    newSocket.on('newCheck', (data: UptimeCheck) => {
-      console.log('🔍 Received new check:', data)
-      setRecentChecks((prev) => [data, ...prev.slice(0, 49)])
+    socket.on('newCheck', (data: UptimeCheck) => {
+      if (!isMountedRef.current) return
+
+      setRecentChecks((prev) => {
+        const updated = [data, ...prev]
+        return updated.slice(0, maxRecentChecks)
+      })
     })
 
-    newSocket.on('bulkUpdate', (data: UptimeStatistics[]) => {
-      console.log('📊 Received bulk update:', data.length, 'statistics')
-      setStatistics(data)
+    socket.on('bulkUpdate', (data: UptimeStatistics[]) => {
+      if (!isMountedRef.current) return
+
+      setStatistics((prev) => {
+        const statsMap = new Map(prev.map((s) => [s.endpointId, s]))
+        data.forEach((stat) => statsMap.set(stat.endpointId, stat))
+
+        return Array.from(statsMap.values()).slice(-100)
+      })
     })
 
-    newSocket.on('systemStatus', (data: any) => {
-      console.log('💬 System message:', data)
-      const message: SystemMessage = {
-        ...data,
-        timestamp: new Date(),
+    socket.on(
+      'systemStatus',
+      (data: { message: string; type: 'info' | 'warning' | 'error' }) => {
+        if (!isMountedRef.current) return
+
+        const message: SystemMessage = {
+          id: `msg-${Date.now()}-${messageIdCounter.current++}`,
+          ...data,
+          timestamp: new Date(),
+        }
+
+        setSystemMessages((prev) => {
+          const updated = [message, ...prev]
+          return updated.slice(0, maxMessages)
+        })
+
+        if (data.type === 'info') {
+          setTimeout(() => {
+            if (isMountedRef.current) {
+              setSystemMessages((prev) =>
+                prev.filter((m) => m.id !== message.id)
+              )
+            }
+          }, 5000)
+        }
       }
+    )
 
-      setSystemMessages((prev) => [message, ...prev.slice(0, 19)])
-
-      // Auto-clear info messages
-      if (data.type === 'info') {
-        setTimeout(() => {
-          setSystemMessages((prev) => prev.filter((m) => m !== message))
-        }, 5000)
-      }
-    })
-
-    socketRef.current = newSocket
-  }, [endpointId])
+    socketRef.current = socket
+  }, [endpointId, maxReconnectAttempts, maxMessages, maxRecentChecks, cleanup])
 
   const disconnect = useCallback(() => {
-    if (socketRef.current) {
-      console.log('🔌 Manually disconnecting WebSocket')
-      socketRef.current.disconnect()
-      socketRef.current = null
-      setIsConnected(false)
-    }
-  }, [])
+    console.log('🔌 Manually disconnecting WebSocket')
+    cleanup()
+  }, [cleanup])
 
   const reconnect = useCallback(() => {
     console.log('🔄 Manual reconnect requested')
-    disconnect()
-    setTimeout(connect, 1000)
-  }, [connect, disconnect])
+    reconnectAttempts.current = 0 // Reset attempts for manual reconnect
+    cleanup()
+    setTimeout(() => {
+      if (isMountedRef.current) {
+        connect()
+      }
+    }, 100)
+  }, [connect, cleanup])
 
   const clearMessages = useCallback(() => {
     setSystemMessages([])
   }, [])
 
-  // Initialize connection
   useEffect(() => {
     if (autoConnect) {
       connect()
     }
 
     return () => {
-      if (socketRef.current) {
-        socketRef.current.disconnect()
-        socketRef.current = null
-      }
+      cleanup()
     }
-  }, [autoConnect, connect])
+  }, [autoConnect, connect, cleanup])
 
   return {
     isConnected,

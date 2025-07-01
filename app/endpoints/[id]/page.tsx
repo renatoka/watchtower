@@ -6,7 +6,9 @@ interface EditEndpointPageProps {
   }>
 }
 
-export default async function EditEndpointPage({ params }: EditEndpointPageProps) {
+export default async function EditEndpointPage({
+  params,
+}: EditEndpointPageProps) {
   const { id } = await params
 
   return (
@@ -17,4 +19,3 @@ export default async function EditEndpointPage({ params }: EditEndpointPageProps
     </div>
   )
 }
-

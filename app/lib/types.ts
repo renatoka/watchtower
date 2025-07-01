@@ -1,4 +1,3 @@
-// lib/types.ts
 export interface Endpoint {
   id: string
   name: string
