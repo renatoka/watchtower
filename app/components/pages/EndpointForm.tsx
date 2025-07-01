@@ -41,7 +41,6 @@ export function EndpointForm({ endpointId }: EndpointFormProps) {
   const [loadingEndpoint, setLoadingEndpoint] = useState(isEditing)
   const [error, setError] = useState<string | null>(null)
 
-  // Load endpoint data if editing
   useEffect(() => {
     if (isEditing && endpointId) {
       loadEndpoint(endpointId)
@@ -81,7 +80,6 @@ export function EndpointForm({ endpointId }: EndpointFormProps) {
     setError(null)
 
     try {
-      // Validation
       if (!formData.name.trim()) {
         throw new Error('Name is required')
       }
@@ -102,14 +100,11 @@ export function EndpointForm({ endpointId }: EndpointFormProps) {
       }
 
       if (isEditing && endpointId) {
-        // Update existing endpoint
         await apiClient.updateEndpoint(endpointId, formData)
       } else {
-        // Create new endpoint
         await apiClient.createEndpoint(formData)
       }
 
-      // Navigate back to endpoints list
       router.push('/endpoints')
     } catch (err) {
       setError(err instanceof Error ? err.message : 'Failed to save endpoint')

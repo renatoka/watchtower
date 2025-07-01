@@ -16,14 +16,13 @@ export function getDb() {
       max: 20,
       idleTimeoutMillis: 30000,
       connectionTimeoutMillis: 5000,
-      // SSL configuration for production
+
       ssl:
         process.env.NODE_ENV === 'production'
           ? { rejectUnauthorized: false }
           : false,
     })
 
-    // Handle connection errors
     pool.on('error', (err) => {
       console.error('Unexpected error on idle database client', err)
     })
@@ -57,13 +56,11 @@ export async function initializeDatabase() {
   const db = getDb()
 
   try {
-    // Test connection first
     const isConnected = await testConnection()
     if (!isConnected) {
       throw new Error('Cannot connect to database')
     }
 
-    // The tables are created by the init script, but we can verify they exist
     const result = await db.query(`
       SELECT table_name
       FROM information_schema.tables
@@ -84,7 +81,6 @@ export async function initializeDatabase() {
   }
 }
 
-// Auto-initialize when module loads (server-side only)
 if (typeof window === 'undefined') {
   setTimeout(() => {
     initializeDatabase().catch(console.error)

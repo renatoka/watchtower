@@ -2,12 +2,29 @@ import { NextRequest, NextResponse } from 'next/server'
 import { monitoringEngine } from '@/app/lib/monitoring'
 import { ApiResponse, UptimeStatistics } from '@/app/lib/types'
 
+function isValidUUID(uuid: string): boolean {
+  const uuidRegex =
+    /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i
+  return uuidRegex.test(uuid)
+}
+
 export async function GET(
   request: NextRequest,
-  { params }: { params: { id: string } }
+  { params }: { params: Promise<{ id: string }> }
 ) {
   const timestamp = new Date()
-  const endpointId = params.id
+  const { id: endpointId } = await params
+
+  if (!isValidUUID(endpointId)) {
+    return NextResponse.json<ApiResponse<null>>(
+      {
+        success: false,
+        error: 'Invalid endpoint ID format',
+        timestamp,
+      },
+      { status: 400 }
+    )
+  }
 
   try {
     const statistics = await monitoringEngine.getUptimeStatistics(endpointId)

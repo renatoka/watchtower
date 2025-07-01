@@ -16,7 +16,6 @@ interface EndpointFormData {
   tags: string[]
 }
 
-// Endpoint Form Modal Component
 function EndpointFormModal({
   isOpen,
   onClose,
@@ -43,7 +42,6 @@ function EndpointFormModal({
   const [loading, setLoading] = useState(false)
   const [error, setError] = useState<string | null>(null)
 
-  // Initialize form data when endpoint changes
   useEffect(() => {
     if (endpoint) {
       setFormData({
@@ -76,7 +74,6 @@ function EndpointFormModal({
     setError(null)
 
     try {
-      // Validation
       if (!formData.name.trim()) {
         throw new Error('Name is required')
       }
@@ -382,7 +379,6 @@ function EndpointFormModal({
   )
 }
 
-// Delete Confirmation Modal
 function DeleteConfirmationModal({
   isOpen,
   onClose,
@@ -444,7 +440,6 @@ function DeleteConfirmationModal({
   )
 }
 
-// Main Endpoint Management Component
 export function EndpointManagement() {
   const [endpoints, setEndpoints] = useState<Endpoint[]>([])
   const [loading, setLoading] = useState(true)
@@ -491,7 +486,6 @@ export function EndpointManagement() {
 
   const handleSave = async (formData: EndpointFormData) => {
     if (editingEndpoint) {
-      // Update existing endpoint
       await apiClient.updateEndpoint(editingEndpoint.id, formData)
       setEndpoints((prev) =>
         prev.map((ep) =>
@@ -501,7 +495,6 @@ export function EndpointManagement() {
         )
       )
     } else {
-      // Create new endpoint
       const { id } = await apiClient.createEndpoint(formData)
       const newEndpoint: Endpoint = {
         id,
@@ -512,7 +505,6 @@ export function EndpointManagement() {
       setEndpoints((prev) => [...prev, newEndpoint])
     }
 
-    // Refresh the data to get the latest state
     setTimeout(() => {
       loadEndpoints()
     }, 1000)

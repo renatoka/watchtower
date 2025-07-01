@@ -33,7 +33,7 @@ export function DashboardOverview() {
   const handleInitializeSampleData = async () => {
     try {
       await apiClient.initializeSampleData()
-      // Wait a moment for monitoring to start
+
       setTimeout(() => {
         fetchData()
       }, 2000)
@@ -45,12 +45,10 @@ export function DashboardOverview() {
   useEffect(() => {
     fetchData()
 
-    // Auto-refresh every 30 seconds
     const interval = setInterval(fetchData, 30000)
     return () => clearInterval(interval)
   }, [])
 
-  // Calculate summary stats
   const totalEndpoints = statistics.length
   const upEndpoints = statistics.filter((s) => s.currentStatus === 'UP').length
   const downEndpoints = totalEndpoints - upEndpoints
@@ -173,7 +171,6 @@ export function DashboardOverview() {
               key={stat.endpointId}
               statistics={stat}
               onClick={() => {
-                // TODO: Navigate to detailed view
                 console.log('View details for:', stat.endpointName)
               }}
             />

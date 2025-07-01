@@ -5,7 +5,6 @@ export async function GET() {
   const timestamp = new Date()
 
   try {
-    // Test database connection
     const dbHealthy = await testConnection()
 
     const status = dbHealthy ? 'healthy' : 'degraded'

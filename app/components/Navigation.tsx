@@ -3,10 +3,14 @@
 import Link from 'next/link'
 import Image from 'next/image'
 import { usePathname } from 'next/navigation'
-import { BarChart3, Settings } from 'lucide-react'
+import { BarChart3, Settings, LogOut, User } from 'lucide-react'
+import { useAuth } from '@/app/contexts/AuthContext'
+import Avatar from '@mui/material/Avatar'
+import Chip from '@mui/material/Chip'
 
 export function Navigation() {
   const pathname = usePathname()
+  const { user, logout } = useAuth()
 
   const navigation = [
     { name: 'Real-Time Data', href: '/realtime', icon: BarChart3 },
@@ -51,11 +55,39 @@ export function Navigation() {
             </div>
           </div>
 
-          <div className="flex items-center">
-            <div className="flex items-center space-x-2">
-              <div className="w-2 h-2 bg-green-500 rounded-full"></div>
-              <span className="text-sm text-gray-600">Monitoring Active</span>
-            </div>
+          <div className="flex items-center space-x-4">
+            {user ? (
+              <>
+                <div className="flex items-center space-x-2">
+                  <Chip
+                    label={user.name || 'User'}
+                    className="text-sm bg-gray-100 text-gray-800"
+                    avatar={
+                      <Avatar
+                        alt={user.name || 'User Avatar'}
+                        className="w-6 h-6"
+                      >
+                        {user.name ? user.name[0].toUpperCase() : 'U'}
+                      </Avatar>
+                    }
+                  />
+                </div>
+                <button
+                  onClick={logout}
+                  className="flex items-center text-sm text-gray-500 hover:text-gray-700"
+                >
+                  <LogOut className="w-4 h-4 mr-1" />
+                  Logout
+                </button>
+              </>
+            ) : (
+              <Link
+                href="/login"
+                className="text-sm text-blue-600 hover:text-blue-700"
+              >
+                Login
+              </Link>
+            )}
           </div>
         </div>
       </div>
